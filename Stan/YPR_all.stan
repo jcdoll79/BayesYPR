@@ -2,6 +2,7 @@
 ---------------------------------------------------------------------------------------
 Stan code to fit a Beverton-Holt Yield-Per-Recruit model
 Jason Doll
+Code currently under development use at your own risk
 ---------------------------------------------------------------------------------------
 */
   
