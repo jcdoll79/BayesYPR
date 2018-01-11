@@ -130,7 +130,7 @@ summary(post_ypr, pars=c("Winf","glbtlinf","glbtk","glbtt0","btLinf","estM","log
 options(max.print=1000)
 
 options(max.print=999999)
-summary(post_ypr, pars=c("age_vb_est_log"))$summary
+summary(post_ypr, pars=c("Y"))$summary
 options(max.print=1000)
 
 yieldsum=summary(post_ypr, pars=c("Y"))$summary
