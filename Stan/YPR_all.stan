@@ -53,19 +53,24 @@ parameters {
   //parameters for von Bertlanffy growth model
   //real<lower=0> agesd; 
   real<lower=0>vbsd; 
-  real mu_linf; 
-  real mu_k; 
-  real mu_t0;
+  // real mu_linf; 
+  // real mu_k; 
+  // real mu_t0;
 
   real Linf_1_raw[yearN];
   real k_1_raw[yearN];   
   real t0_1_raw[yearN];
   
-  real<lower=0>linf_sd;
-  real<lower=0>k_sd;
-  real<lower=0> t0_sd;
+  //real<lower=0>linf_sd;
+  //real<lower=0>k_sd;
+  //real<lower=0> t0_sd;
 
   //real age_vb_est_log[N_vb];
+  vector[3] parammean;
+  matrix[yearN,3] mulvb;
+  cholesky_factor_corr[3] L_Omega;
+  vector<lower=0>[3] sigma; 
+    
 }
 
 transformed parameters{
@@ -73,19 +78,19 @@ transformed parameters{
   real k[yearN];   
   real t0[yearN];
   
-  real Linf_1[yearN];
-  real k_1[yearN];   
-  real t0_1[yearN];
+  //real Linf_1[yearN];
+  //real k_1[yearN];   
+  //real t0_1[yearN];
   
   //non-centered hierarchical prior
   for (j in 1:yearN){
-    Linf_1[j] = mu_linf + Linf_1_raw[j] * linf_sd;
-    k_1[j] = mu_k + k_1_raw[j] * k_sd;
-    t0_1[j] = mu_t0 + t0_1_raw[j] * t0_sd;
+    // Linf_1[j] = mulvb[1] + Linf_1_raw[j] * linf_sd;
+    // k_1[j] = mulvb[2] + k_1_raw[j] * k_sd;
+    // t0_1[j] = mulvb[3] + t0_1_raw[j] * t0_sd;
     
-    Linf[j] = exp(Linf_1[j]);
-    k[j] = exp(k_1[j]);
-    t0[j] = exp(t0_1[j]) - 10;
+    Linf[j] = exp(mulvb[j,1]);
+    k[j] = exp(mulvb[j,2]);
+    t0[j] = exp(mulvb[j,3]) - 10;
   }
 
 }
@@ -108,12 +113,27 @@ model {
   //priors for von Bertlanffy model
   //agesd ~ cauchy(0,5); //SD when estimating uncertainty in the aging process
   vbsd ~ cauchy(0,5); 
-  mu_linf ~ uniform(0,10);
-  mu_k ~ normal(0,10); 
-  mu_t0 ~ uniform(-3,3); 
-  linf_sd ~ cauchy(0,5);
-  k_sd ~ cauchy(0,5);
-  t0_sd ~ cauchy(0,5);
+  //linf_sd ~ cauchy(0,5);
+  //k_sd ~ cauchy(0,5);
+  //t0_sd ~ cauchy(0,5);
+  
+  //Hyperprior means are drawn from multivariate normal distribuiton
+  //mu_linf ~ uniform(0,10);
+  //mu_k ~ normal(0,10); 
+  //mu_t0 ~ uniform(-3,3); 
+  
+  parammean[1] ~ uniform(0,10); //hyperprior for Linf
+  parammean[2] ~ normal(0,10);  //hyperprior for k
+  parammean[3] ~ uniform(-3,3); //hyperprior for t0
+  
+  L_Omega ~ lkj_corr_cholesky(1);
+  sigma ~ cauchy(0, 2.5); // prior on the standard deviations
+  
+  
+  //Currenlty generating divergent transitions - look into non-entered version
+  for (r in 1:yearN){
+    mulvb[r,1:3] ~ multi_normal_cholesky(parammean[1:3],diag_pre_multiply(sigma, L_Omega));
+  }
   
   //Likelihooh for Natural Mortality models
   for (i in 1:N_m) {  
@@ -167,14 +187,14 @@ generated quantities {
   real Y[nll,nmu] ;
   
   
-  glbtlinf=exp(mu_linf);
-  glbtk=exp(mu_k);
-  glbtt0=exp(mu_t0) - 10;
+  glbtlinf=exp(parammean[1]);
+  glbtk=exp(parammean[2]);
+  glbtt0=exp(parammean[3]) - 10;
     
   for (j in 1:yearN){
-    btLinf[j] = exp(Linf_1[j]);
-    btk[j] = exp(k_1[j])   ;
-    btt0[j] = exp(t0_1[j]) - 10;
+    btLinf[j] = exp(mulvb[j,1]);
+    btk[j] = exp(mulvb[j,2])   ;
+    btt0[j] = exp(mulvb[j,3]) - 10;
   }
   
   //estimated natural mortality based on maximum age
