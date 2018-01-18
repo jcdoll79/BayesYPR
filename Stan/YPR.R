@@ -16,17 +16,34 @@
 require(rstan)
 require(shinystan)
 
-then_data<-(read.csv("then_data.csv"))
+
+#This line sets the working directory to the location of this file in Rstudio
+#This directory must have all data files needed.
+#If you receive an error, manually set the working directory
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+
+#Import database of fish natural mortality and von Bertalanffy parameters from
+#Then, A.Y., and J.M. Hoenig. 2015. Database on Natural Mortality Rates and Associated Life History Parameters,
+#version 1.X. Available at: http://bit.ly/vims_mort.
+#To access most recent data, please see their website
+then_data<-readRDS("then_data.RDS")
 then_data<-na.omit(then_data[,c(1,4)])
-WAE_LW <- read.csv("Monroe_LW.csv")
-Monroe_LVB <- read.csv("Monroe_LVB.csv")
 
-Monroe_LVB <- subset(Monroe_LVB,Monroe_LVB$Age>0)
+#Import LW and LVB data
+WAE_LW <- readRDS("LWdata.RDS")
+Monroe_LVB <- readRDS("LVBdata.RDS")
 
-mu<-seq(from=0.05,to=0.75,by=0.01)
+#Speicify range of exploitation for YPR model
+mu<-seq(from=0.05,to=0.75,by=0.05)
 
+#Specify minimum length limits
 minll<-c(203,254,305,356,406,457,508)
 
+#Set inintial population size for YPR model
+N0=100
+
+#Combine data for Stan
 dataList = list(
   'obs_m'=log(then_data$M),
   'tmax'=log(then_data$tmax),
@@ -48,29 +65,26 @@ dataList = list(
   'nmu' = length(mu),
   'mu' = mu,
   
-  'N0' = 100
+  'N0' = N0
 )
 
 
 #Generate reasonable starting values for each model using MLE
-mod2 = nls(M ~ alpha * (tmax ^ beta),
-           data=then_data,
-           start=list(alpha=1,beta=1))
-summary(mod2)
 
 #Run a nlm model with frequentist using nonlinear least squares to get good starting values
+#LVB model starting values
 mod1<-nls((Monroe_LVB$TL*25.4) ~ Linf * (1-exp(-K * (Age - t0))),
           data=Monroe_LVB,
           start=list(Linf=(max(Monroe_LVB$TL)*25.4),K=0.1,t0=0))
 lvbstart<-matrix(unlist(coef(mod1)),nrow=1)
 
-
+#Natural mortality starting values
 mod2<-nls(then_data$M~ alpha * (then_data$tmax^beta),
           data=then_data,
           start=list(alpha=4.899,beta=-0.916))
 mstart<-matrix(unlist(coef(mod2)),nrow=1)
 
-
+#Weight-length regression starting values
 waetl=(WAE_LW$TL*25.4)
 waetw=(WAE_LW$TW*453.6)
 lwmod<-nls(waetw ~ alpha * waetl^beta,
@@ -78,8 +92,13 @@ lwmod<-nls(waetw ~ alpha * waetl^beta,
 alpha<-coef(lwmod)
 params<-as.vector(unlist(coef(lwmod)))
 
+
+#Set number of chains
+#Note this script is set to run multiple cores which is set to the number of chains
+#Thus if using three chains and have >=3 cores then one chain will be run on each core separately.
 nchains=3
 
+#Combine initial values
 initsList <- lapply(1:nchains,function(i) {
   list(
     #age_vb_est_log=log(Monroe_LVB$Age),  #initialize mean at observed values
@@ -91,12 +110,8 @@ initsList <- lapply(1:nchains,function(i) {
     linf_sd = runif(1,1,5),
     vbsd = runif(1,1,5),
     sdwt = runif(1,1,5),
-    Linf_1 = log(rep(lvbstart[,1],8)),
-    k_1 = log(rep(lvbstart[,2],8)),
-    t0_1 = log(rep(lvbstart[,3],8)+10),
-    mu_linf = log(lvbstart[,1]),
-    mu_k = log(lvbstart[,2]),
-    mu_t0 = log(lvbstart[,3]+10),
+    mulvb = matrix(c(log(rep(lvbstart[,1],8)),log(rep(lvbstart[,2],8)),log(rep(lvbstart[,3],8)+10)),nrow=8,ncol=3),
+    parammean = c(log(lvbstart[,1]),log(lvbstart[,2]),log(lvbstart[,3]+10)),
     log_alpha=log(params[1]),
     Linf_1_raw=rep(0,8),
     k_1_raw=rep(0,8),
@@ -118,6 +133,7 @@ post_ypr <- stan(file = 'YPR_all.stan',
                  warmup = 1000 , 
                  cores = nchains,
                  thin = 1,control = list(adapt_delta = 0.99,max_treedepth=15))
+
 
 
 #Exploring the output
