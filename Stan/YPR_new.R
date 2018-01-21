@@ -102,6 +102,7 @@ nchains=3
 initsList <- lapply(1:nchains,function(i) {
   list(
     #age_vb_est_log=log(Monroe_LVB$Age),  #initialize mean at observed values
+    #agesd=runif(1,1,2)
     log_alpha_m = log(mstart[,1]),
     beta_m =mstart[,2],
     sdm = runif(1,1,1),
@@ -110,15 +111,17 @@ initsList <- lapply(1:nchains,function(i) {
     linf_sd = runif(1,1,5),
     vbsd = runif(1,1,5),
     sdwt = runif(1,1,5),
-    mulvb = matrix(c(log(rep(lvbstart[,1],8)),log(rep(lvbstart[,2],8)),log(rep(lvbstart[,3],8)+10)),nrow=8,ncol=3),
-    parammean = c(log(lvbstart[,1]),log(lvbstart[,2]),log(lvbstart[,3]+10)),
+    Linf_1 = log(rep(lvbstart[,1],8)),
+    k_1 = log(rep(lvbstart[,2],8)),
+    t0_1 = log(rep(lvbstart[,3],8)+10),
+    mu_linf = log(lvbstart[,1]),
+    mu_k = log(lvbstart[,2]),
+    mu_t0 = log(lvbstart[,3]+10),
     log_alpha=log(params[1]),
     Linf_1_raw=rep(0,8),
     k_1_raw=rep(0,8),
     t0_1_raw=rep(0,8),
-    beta=params[2],
-    agesd=runif(1,1,2)
-    
+    beta=params[2]
   )
 })
 

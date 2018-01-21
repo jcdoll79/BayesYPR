@@ -1,12 +1,10 @@
 /*Bayesian Yield-Per-Recruit model
 ---------------------------------------------------------------------------------------
 Stan code to fit a Beverton-Holt Yield-Per-Recruit model
-
 To accompany:
 Doll, J.C., T.E. Lauer, and S.Clark-Kolaks. 2017. Yield-per-recurit modeling of two 
 piscivores in a Midwestern reservoir: A Bayesian approach. 
 https://doi.org/10.1016/j.fishres.2017.03.012
-
 Jason Doll
 Code currently under development use at your own risk
 ---------------------------------------------------------------------------------------
@@ -31,12 +29,12 @@ data {
   int yearnum[N_vb];  //year class or year identifier for hierarchical model, must be continuous
   int<lower=0> yearN; //number of years or year classes
 
-  int<lower=0> nll;
-  real minll[nll];
-  int<lower=0> nmu;
-  real mu[nmu];
-  
-  int<lower=0> N0;   //initial number of individuals for yield-per-recruit model
+  //Input data for yield-per-recruit model
+  int<lower=0> nll;   //number of minimum length limits
+  real minll[nll];    //minimum length limits to calculate yield
+  int<lower=0> nmu;   //number of exploitation rates
+  real mu[nmu];       //exploitation rates to calculate yield
+  int<lower=0> N0;    //initial number of individuals for yield-per-recruit model
   }
 
 parameters {
@@ -51,26 +49,19 @@ parameters {
   real beta;
   
   //parameters for von Bertlanffy growth model
-  //real<lower=0> agesd; 
   real<lower=0>vbsd; 
-  // real mu_linf; 
-  // real mu_k; 
-  // real mu_t0;
-
+  real mu_linf;
+  real mu_k;
+  real mu_t0;
   real Linf_1_raw[yearN];
   real k_1_raw[yearN];   
   real t0_1_raw[yearN];
   
-  //real<lower=0>linf_sd;
-  //real<lower=0>k_sd;
-  //real<lower=0> t0_sd;
-
+  real<lower=0>linf_sd;
+  real<lower=0>k_sd;
+  real<lower=0> t0_sd;
+  //real<lower=0> agesd; 
   //real age_vb_est_log[N_vb];
-  vector[3] parammean;
-  matrix[yearN,3] mulvb;
-  cholesky_factor_corr[3] L_Omega;
-  vector<lower=0>[3] sigma; 
-    
 }
 
 transformed parameters{
@@ -78,19 +69,19 @@ transformed parameters{
   real k[yearN];   
   real t0[yearN];
   
-  //real Linf_1[yearN];
-  //real k_1[yearN];   
-  //real t0_1[yearN];
+  real Linf_1[yearN];
+  real k_1[yearN];
+  real t0_1[yearN];
   
   //non-centered hierarchical prior
   for (j in 1:yearN){
-    // Linf_1[j] = mulvb[1] + Linf_1_raw[j] * linf_sd;
-    // k_1[j] = mulvb[2] + k_1_raw[j] * k_sd;
-    // t0_1[j] = mulvb[3] + t0_1_raw[j] * t0_sd;
+    Linf_1[j] = mu_linf + Linf_1_raw[j] * linf_sd;
+    k_1[j] = mu_k + k_1_raw[j] * k_sd;
+    t0_1[j] = mu_t0 + t0_1_raw[j] * t0_sd;
     
-    Linf[j] = exp(mulvb[j,1]);
-    k[j] = exp(mulvb[j,2]);
-    t0[j] = exp(mulvb[j,3]) - 10;
+    Linf[j] = exp(Linf_1[j]);
+    k[j] = exp(k_1[j]);
+    t0[j] = exp(t0_1[j]) - 10;
   }
 
 }
@@ -113,29 +104,18 @@ model {
   //priors for von Bertlanffy model
   //agesd ~ cauchy(0,5); //SD when estimating uncertainty in the aging process
   vbsd ~ cauchy(0,5); 
-  //linf_sd ~ cauchy(0,5);
-  //k_sd ~ cauchy(0,5);
-  //t0_sd ~ cauchy(0,5);
+  
+  linf_sd ~ cauchy(0,5);
+  k_sd ~ cauchy(0,5);
+  t0_sd ~ cauchy(0,5);
   
   //Hyperprior means are drawn from multivariate normal distribuiton
-  //mu_linf ~ uniform(0,10);
-  //mu_k ~ normal(0,10); 
-  //mu_t0 ~ uniform(-3,3); 
-  
-  parammean[1] ~ uniform(0,10); //hyperprior for Linf
-  parammean[2] ~ normal(0,10);  //hyperprior for k
-  parammean[3] ~ uniform(-3,3); //hyperprior for t0
-  
-  L_Omega ~ lkj_corr_cholesky(1);
-  sigma ~ cauchy(0, 2.5); // prior on the standard deviations
+  mu_linf ~ uniform(0,10);
+  mu_k ~ normal(0,10);
+  mu_t0 ~ uniform(-3,3);
   
   
-  //Currenlty generating divergent transitions - look into non-entered version
-  for (r in 1:yearN){
-    mulvb[r,1:3] ~ multi_normal_cholesky(parammean[1:3],diag_pre_multiply(sigma, L_Omega));
-  }
-  
-  //Likelihooh for Natural Mortality models
+  //Likelihood for Natural Mortality models
   for (i in 1:N_m) {  
     //mu_m is on the log scale
     mu_m[i]=log_alpha_m + tmax[i] * beta_m;
@@ -151,7 +131,7 @@ model {
 
   for (j in 1:yearN){
     Linf_1_raw[j] ~ normal(0,1) ; // implies Linf_1[j] ~ normal(mu_linf,linf_sd) ;
-    k_1_raw[j] ~ normal(0,1)  ;   // implies k_1[j] ~ normal(mu_k,k_sd)  ;   
+    k_1_raw[j] ~ normal(0,1)  ;   // implies k_1[j] ~ normal(mu_k,k_sd)  ;
     t0_1_raw[j] ~ normal(0,1) ;   // implies t0_1[j] ~ normal(mu_t0,t0_sd) ;
   }
 
@@ -172,9 +152,6 @@ generated quantities {
   real glbtlinf; 
   real glbtk; 
   real glbtt0;
-  real btLinf[yearN];
-  real btk[yearN];   
-  real btt0[yearN];
   real Winf;
   real estM;
   real Q;
@@ -186,16 +163,10 @@ generated quantities {
   real Nt[nll,nmu] ;
   real Y[nll,nmu] ;
   
-  
-  glbtlinf=exp(parammean[1]);
-  glbtk=exp(parammean[2]);
-  glbtt0=exp(parammean[3]) - 10;
-    
-  for (j in 1:yearN){
-    btLinf[j] = exp(mulvb[j,1]);
-    btk[j] = exp(mulvb[j,2])   ;
-    btt0[j] = exp(mulvb[j,3]) - 10;
-  }
+  //back-transform global von Bertlanffy growth model parameters for ypr
+  glbtlinf=exp(mu_linf);
+  glbtk=exp(mu_k);
+  glbtt0=exp(mu_t0) - 10;
   
   //estimated natural mortality based on maximum age
   estM = exp(normal_rng(log_alpha_m + log(maxage) * beta_m,sdm)) ;
